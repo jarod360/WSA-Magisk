@@ -54,7 +54,7 @@ function Finish {
         Optimize-VHD ".\*.vhdx" -Mode Full
     }
     Clear-Host
-    Start-Process "wsa://com.topjohnwu.magisk"
+    Start-Process "wsa://io.github.huskydg.magisk"
     Start-Process "wsa://com.android.vending"
 }
 
