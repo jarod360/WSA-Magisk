@@ -1,0 +1,100 @@
+name: Custom Build
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        type: choice
+        description: Architecture of WSA.
+        required: true
+        options: [x64, arm64]
+        default: x64
+      release-type:
+        type: choice
+        description: Release type of WSA. RP = Release Preview; WIS = Insider Slow; WIF = Insider Fast
+        required: true
+        options: ["retail","RP","WIS","WIF"]
+        default: "retail"
+      magisk-ver:
+        type: choice
+        description: Magisk version.
+        required: true
+        options: ["stable","beta","canary","debug"]
+        default: "stable"
+      gapps-brand:
+        type: choice
+        description: GApps brand. none for no integration of GApps
+        required: true
+        options: ["OpenGApps","MindTheGapps","none"]
+        default: "MindTheGapps"
+      gapps-variant:
+        type: choice
+        description: GApps variant.
+        required: true
+        options: ["super","stock","full","mini","micro","nano","pico","tvstock","tvmini"]
+        default: "pico"
+      root-sol:
+        type: choice
+        description: Root solution. none means no root.
+        required: true
+        options: ["magisk","none"]
+        default: "magisk"
+#       remove-amazon:
+#         description: Remove Amazon Appstore from the system
+#         required: true
+#         type: boolean 
+#         default: true
+      compress-format:
+        type: choice
+        description: Compress format.
+        required: true
+        options: ["zip","7z"]
+        default: "7z"
+
+jobs:
+  custbuild:
+    name: Build WSA
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout ♻️
+        uses: actions/checkout@v3
+
+      - name: Install Dependencies 🧑‍🏭
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: patchelf e2fsprogs python3 python3-pip aria2 p7zip-full attr unzip sudo whiptail qemu-utils
+          version: 1.0
+
+      - name: Install Lzip + Python venv & its libraries 🐍
+        run: |
+          wget -P ./download/ http://ftp.debian.org/debian/pool/main/l/lzip/lzip_1.23-5_amd64.deb
+          sudo dpkg -i ./download/lzip_1.23-5_amd64.deb
+          python3 -c "import venv" >/dev/null 2>&1 || {
+              if ! (sudo apt-get install "python3-venv"); then
+                  abort
+              fi
+          }
+          echo "Creating python3 virtual env"
+          python3 -m venv --system-site-packages "$(dirname "$PWD")/python3-env" || {
+               echo "Failed to upgrade python3 virtual env, clear and recreate"
+               python3 -m venv --clear --system-site-packages "$(dirname "$PWD")/python3-env" || abort "Failed to create python3 virtual env"
+          }
+          source "$(dirname "$PWD")/python3-env/bin/activate" || abort "Failed to activate python3 virtual env"
+          python3 -c "import pkg_resources; pkg_resources.require(open('scripts/requirements.txt',mode='r'))" &>/dev/null || {
+               echo "Installing Python3 dependencies"
+               python3 -m pip install -r scripts/requirements.txt || abort "Failed to install python3 dependencies"
+          }
+          deactivate
+
+      - name: Grant exec permission to script 👑
+        run: chmod +x ./scripts/build.sh
+
+      - name: Build WSA 🏗️
+        id: wsa
+        run: ./scripts/build.sh --arch ${{ inputs.arch }} --release-type ${{ inputs.release-type }} --magisk-ver ${{ inputs.magisk-ver }} --gapps-brand ${{ inputs.gapps-brand }} --gapps-variant ${{ inputs.gapps-variant }} --root-sol ${{ inputs.root-sol }} --remove-amazon --compress-format ${{ inputs.compress-format }}
+
+      - name: Upload Artifact 🤌
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.wsa.outputs.artifact }}
+          path: ./output/${{ steps.wsa.outputs.artifact }}.${{ inputs.compress-format }}
