@@ -1,7 +1,7 @@
 name: Build WSA Magisk
 on:
   schedule:
-    - cron: "30 2 1 * *"
+    - cron: "0 13 * * *"
   push:
     branches: [main]
   workflow_dispatch:
@@ -18,18 +18,18 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [x64, arm64]
-        root: [magisk, none]
-        gapps: [MindTheGapps, none]
-        release: [retail]
-        compress-format: [7z]
+        arch: [x64]
+        release: [WIF]
+        gapps: [MindTheGapps]
+        root: [magisk]
+        compress-format: [zip]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
       - name: Install Dependencies
-        uses: awalsh128/cache-apt-pkgs-action@latest
+        uses: sn-o-w/cache-apt-pkgs-action@master
         with:
           packages: patchelf e2fsprogs python3 python3-pip aria2 p7zip-full attr unzip sudo whiptail qemu-utils
           version: 1.0
@@ -60,7 +60,7 @@ jobs:
 
       - name: Build WSA GAPPS ${{ matrix.root }} ${{ matrix.arch }}
         id: wsa
-        run: ./scripts/build.sh --arch ${{ matrix.arch }} --release-type ${{ matrix.release }} --magisk-ver stable --gapps-brand ${{ matrix.gapps }} --root-sol ${{ matrix.root }} --remove-amazon --compress-format ${{ matrix.compress-format }}
+        run: ./scripts/build.sh --arch ${{ matrix.arch }} --release-type ${{ matrix.release }} --magisk-ver delta --gapps-brand ${{ matrix.gapps }} --root-sol ${{ matrix.root }} --remove-amazon --compress-format ${{ matrix.compress-format }}
 
       - name: Prepare release tag
         id: date

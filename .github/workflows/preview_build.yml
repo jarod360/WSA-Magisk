@@ -1,0 +1,91 @@
+# NOTE: 2304 builds are released to the Insider channels, so this file is useless for now.
+name: WSA Preview Build
+on:
+  workflow_dispatch:
+
+jobs:
+  custbuild:
+    name: Build WSA
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x64]
+        release: [WIF]
+        gapps: [MindTheGapps]
+        root: [magisk]
+        compress-format: [zip]
+
+    steps:
+      - name: Checkout ♻️
+        uses: actions/checkout@v3
+
+      - name: Install Dependencies 🧑‍🏭
+        uses: sn-o-w/cache-apt-pkgs-action@master
+        with:
+          packages: patchelf e2fsprogs python3 python3-pip aria2 p7zip-full attr unzip sudo whiptail qemu-utils
+          version: 1.0
+
+      - name: Install Lzip + Python venv & its libraries 🐍
+        run: |
+          wget -P ./download/ http://ftp.debian.org/debian/pool/main/l/lzip/lzip_1.23-5_amd64.deb
+          sudo dpkg -i ./download/lzip_1.23-5_amd64.deb
+          python3 -c "import venv" >/dev/null 2>&1 || {
+              if ! (sudo apt-get install "python3-venv"); then
+                  abort
+              fi
+          }
+          echo "Creating python3 virtual env"
+          python3 -m venv --system-site-packages "$(dirname "$PWD")/python3-env" || {
+               echo "Failed to upgrade python3 virtual env, clear and recreate"
+               python3 -m venv --clear --system-site-packages "$(dirname "$PWD")/python3-env" || abort "Failed to create python3 virtual env"
+          }
+          source "$(dirname "$PWD")/python3-env/bin/activate" || abort "Failed to activate python3 virtual env"
+          python3 -c "import pkg_resources; pkg_resources.require(open('scripts/requirements.txt',mode='r'))" &>/dev/null || {
+               echo "Installing Python3 dependencies"
+               python3 -m pip install -r scripts/requirements.txt || abort "Failed to install python3 dependencies"
+          }
+          deactivate
+
+      - name: Grant exec permission to script 👑
+        run: chmod +x ./scripts/build.sh
+
+      - name: Add eligible Microsoft identity to the WSA Preview Program 🧙🏻‍♂️
+        env:
+          USER_CODE: ${{ secrets.USER_CODE }}
+        if: env.USER_CODE != null
+        run: |
+          mkdir -p ./download/ >/dev/null 2>&1
+          echo "user_code=$USER_CODE" > ./download/.ms_account
+
+      - name: Download WSA Preview build + VCLibs 14 + UI XAML manually (if no eligible Microsoft identity is set) 🧙🏻‍♂️
+        env:
+          USER_CODE: ${{ secrets.USER_CODE }}
+        if: env.USER_CODE == null
+        run: |
+          wget -P ./download/wsa https://github.com/sn-o-w/WSA-bundle/releases/download/v2304.40000.3.0/MicrosoftCorporationII.WindowsSubsystemForAndroid_2304.40000.3.0_neutral___8wekyb3d8bbwe.7z
+          7z x ./download/wsa/*.7z -o./download/
+          mv ./download/*.Msixbundle ./download/wsa-${{ matrix.release }}.zip
+          rm -rf ./download/wsa
+          wget -P ./download/ https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx
+          mv ./download/Microsoft.VCLibs.x64.14.00.Desktop.appx ./download/Microsoft.VCLibs.140.00.UWPDesktop_x64.appx
+          wget -P ./download/ https://raw.githubusercontent.com/M1k3G0/Win10_LTSC_VP9_Installer/master/Microsoft.VCLibs.140.00_14.0.30704.0_x64__8wekyb3d8bbwe.appx
+          mv ./download/Microsoft.VCLibs.140.00_14.0.30704.0_x64__8wekyb3d8bbwe.appx ./download/Microsoft.VCLibs.140.00_x64.appx
+          wget -P ./download/xaml https://globalcdn.nuget.org/packages/microsoft.ui.xaml.2.8.3.nupkg
+          7z x ./download/xaml/*.nupkg -o./download/xaml/
+          mv ./download/xaml/tools/AppX/x64/Release/*.appx ./download/Microsoft.UI.Xaml.2.8_x64.appx
+          rm -rf ./download/xaml
+
+      - name: Build WSA 🏗️
+        id: wsa
+        run: |
+          if [ -f "./download/.ms_account" ]; then
+              ./scripts/build.sh --arch ${{ matrix.arch }} --release-type ${{ matrix.release }} --magisk-ver delta --gapps-brand ${{ matrix.gapps }} --root-sol ${{ matrix.root }} --remove-amazon --compress-format ${{ matrix.compress-format }}
+          else
+              ./scripts/build.sh --arch ${{ matrix.arch }} --release-type ${{ matrix.release }} --magisk-ver delta --gapps-brand ${{ matrix.gapps }} --root-sol ${{ matrix.root }} --remove-amazon --skip-download-wsa --compress-format ${{ matrix.compress-format }}
+          fi
+
+      - name: Upload Artifact 🤌
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.wsa.outputs.artifact }}
+          path: ./output/${{ steps.wsa.outputs.artifact }}.${{ matrix.compress-format }}

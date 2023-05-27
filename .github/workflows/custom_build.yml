@@ -13,13 +13,13 @@ on:
         description: Release type of WSA. RP = Release Preview; WIS = Insider Slow; WIF = Insider Fast
         required: true
         options: ["retail","RP","WIS","WIF"]
-        default: "retail"
+        default: "WIF"
       magisk-ver:
         type: choice
         description: Magisk version.
         required: true
-        options: ["stable","beta","canary","debug"]
-        default: "stable"
+        options: ["delta"]
+        default: "delta"
       gapps-brand:
         type: choice
         description: GApps brand. none for no integration of GApps
@@ -48,7 +48,7 @@ on:
         description: Compress format.
         required: true
         options: ["zip","7z"]
-        default: "7z"
+        default: "zip"
 
 jobs:
   custbuild:
@@ -60,7 +60,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Install Dependencies 🧑‍🏭
-        uses: awalsh128/cache-apt-pkgs-action@latest
+        uses: sn-o-w/cache-apt-pkgs-action@master
         with:
           packages: patchelf e2fsprogs python3 python3-pip aria2 p7zip-full attr unzip sudo whiptail qemu-utils
           version: 1.0
