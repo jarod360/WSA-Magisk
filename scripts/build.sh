@@ -129,12 +129,12 @@ Gen_Rand_Str() {
 }
 
 default() {
-    ARCH=x64
-    RELEASE_TYPE=retail
-    MAGISK_VER=stable
-    GAPPS_BRAND=MindTheGapps
-    GAPPS_VARIANT=pico
-    ROOT_SOL=magisk
+    ARCH="x64"
+    RELEASE_TYPE="WIF"
+    MAGISK_VER="delta"
+    GAPPS_BRAND="MindTheGapps"
+    GAPPS_VARIANT="pico"
+    ROOT_SOL="magisk"
 }
 
 exit_with_message() {
@@ -236,11 +236,7 @@ RELEASE_TYPE_MAP=(
 )
 
 MAGISK_VER_MAP=(
-    "stable"
-    "beta"
-    "canary"
-    "debug"
-    "release"
+    "delta"
 )
 
 GAPPS_BRAND_MAP=(
@@ -580,7 +576,7 @@ if [ "$GAPPS_BRAND" != "none" ] || [ "$ROOT_SOL" = "magisk" ]; then
         fi
         # shellcheck disable=SC1090
         source "$WSA_WORK_ENV" || abort
-        if [ "$MAGISK_VERSION_CODE" -lt 26000 ] && [ "$MAGISK_VER" != "stable" ] && [ -z ${CUSTOM_MAGISK+x} ]; then
+        if [ "$MAGISK_VERSION_CODE" -lt 26000 ] && [ "$MAGISK_VER" != "delta" ] && [ -z ${CUSTOM_MAGISK+x} ]; then
             abort "Please install Magisk 26.0+"
         fi
         sudo chmod +x "../linker/$HOST_ARCH/linker64" || abort
@@ -1019,7 +1015,7 @@ echo "Generate info"
 if [[ "$ROOT_SOL" = "none" ]]; then
     name1=""
 elif [ "$ROOT_SOL" = "magisk" ]; then
-    name1="-with-magisk-$MAGISK_VERSION_NAME($MAGISK_VERSION_CODE)-$MAGISK_VER"
+    name1="-with-magisk-$MAGISK_VERSION_NAME($MAGISK_VERSION_CODE)"
 elif [ "$ROOT_SOL" = "kernelsu" ]; then
     name1="-with-$ROOT_SOL-$KERNELSU_VER"
 fi
