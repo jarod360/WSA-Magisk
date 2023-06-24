@@ -28,9 +28,16 @@ if [ "$HOST_ARCH" != "x86_64" ] && [ "$HOST_ARCH" != "aarch64" ]; then
     exit 1
 fi
 cd "$(dirname "$0")" || exit 1
-# export TMPDIR=$HOME/.cache/wsa
-if [ "$TMPDIR" ] && [ ! -d "$TMPDIR" ]; then
+if [ "$(df -m /tmp | awk 'NR==2{print $4}')" -lt 8192 ]; then
+    export TMPDIR
+    TMPDIR=$HOME/.cache/wsa
     mkdir -p "$TMPDIR"
+    if [ "$(( $(free -m | awk 'NR==2{print $7}') + $(free -m | awk 'NR==3{print $4}') ))" -gt 8192 ]; then
+        sudo mount -t tmpfs tmpfs "$TMPDIR"
+    elif [ "$(df -m "$TMPDIR" | awk 'NR==2{print $4}')" -lt 10240 ]; then
+        echo "No space left on device"
+        exit 1
+    fi
 fi
 WORK_DIR=$(mktemp -d -t wsa-build-XXXXXXXXXX_) || exit 1
 
@@ -79,7 +86,9 @@ umount_clean() {
     fi
     if [ "$TMPDIR" ] && [ -d "$TMPDIR" ]; then
         echo "Cleanup Temp Directory"
-        rm -rf "${TMPDIR:?}"
+        if [ "$(df -T "${TMPDIR:?}" | awk 'NR==2{print $2}')" = "tmpfs" ]; then
+            sudo umount "${TMPDIR:?}"
+        fi
         unset TMPDIR
     fi
     rm -f "${DOWNLOAD_DIR:?}/$DOWNLOAD_CONF_NAME"
@@ -332,6 +341,7 @@ Additional Options:
                         $GAPPS_PROPS_MSG1
                         $GAPPS_PROPS_MSG2
                         $GAPPS_PROPS_MSG3
+    --output            Specify output path
 
 Example:
     ./build.sh --release-type RP --magisk-ver beta --gapps-variant pico --remove-amazon
@@ -357,6 +367,7 @@ ARGUMENT_LIST=(
     "debug"
     "help"
     "skip-download-wsa"
+    "output:"
 )
 
 default
@@ -386,6 +397,7 @@ while [[ $# -gt 0 ]]; do
         --magisk-ver        ) MAGISK_VER="$2"; shift 2 ;;
         --debug             ) DEBUG="on"; shift ;;
         --skip-download-wsa ) DOWN_WSA="no"; shift ;;
+        --output            ) OUTPUT_DIR="$2"; shift 2 ;;
         --help              ) usage; exit 0 ;;
         --                  ) shift; break;;
    esac
@@ -494,6 +506,8 @@ if [ -z ${OFFLINE+x} ]; then
         # shellcheck disable=SC1090
         source "$WSA_WORK_ENV" || abort
     else
+        echo "Generate Download Links"
+        python3 generateWSALinks.py "$ARCH" "$RELEASE_TYPE" "$DOWNLOAD_DIR" "$DOWNLOAD_CONF_NAME" "$DOWN_WSA" || abort
         WSA_MAJOR_VER=$(python3 getWSAMajorVersion.py "$ARCH" "$WSA_ZIP_PATH")
     fi
     if [[ "$WSA_MAJOR_VER" -lt 2211 ]]; then
@@ -1044,7 +1058,7 @@ echo "$artifact_name"
 echo "artifact=$artifact_name" >> "$GITHUB_OUTPUT"
 echo -e "\nFinishing building...."
 if [ -f "$OUTPUT_DIR" ]; then
-    sudo rm -rf ${OUTPUT_DIR:?}
+    sudo rm -rf "${OUTPUT_DIR:?}"
 fi
 if [ ! -d "$OUTPUT_DIR" ]; then
     mkdir -p "$OUTPUT_DIR"
