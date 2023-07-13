@@ -55,7 +55,7 @@ Function Finish {
     }
     Clear-Host
     Start-Process "shell:AppsFolder\MicrosoftCorporationII.WindowsSubsystemForAndroid_8wekyb3d8bbwe!SettingsApp"
-    Start-Process "wsa://com.topjohnwu.magisk"
+    Start-Process "wsa://io.github.huskydg.magisk"
     Start-Process "wsa://com.android.vending"
     Start-Process "wsa://com.android.settings"
 }
