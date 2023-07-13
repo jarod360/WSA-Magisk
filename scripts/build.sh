@@ -451,7 +451,7 @@ RELEASE_NAME=${RELEASE_NAME_MAP[$RELEASE_TYPE]} || abort
 echo -e "Build: RELEASE_TYPE=$RELEASE_NAME"
 
 WSA_ZIP_PATH=$DOWNLOAD_DIR/wsa-$RELEASE_TYPE.zip
-vclibs_PATH="$DOWNLOAD_DIR/Microsoft.VCLibs.140.00_$ARCH.appx"
+VCLibs_PATH="$DOWNLOAD_DIR/Microsoft.VCLibs.140.00_$ARCH.appx"
 UWPVCLibs_PATH="$DOWNLOAD_DIR/Microsoft.VCLibs.140.00.UWPDesktop_$ARCH.appx"
 xaml_PATH="$DOWNLOAD_DIR/Microsoft.UI.Xaml.2.8_$ARCH.appx"
 MAGISK_ZIP=magisk-$MAGISK_VER.zip
@@ -559,7 +559,6 @@ fi
 echo "Extract WSA"
 if [ -f "$WSA_ZIP_PATH" ]; then
     if ! python3 extractWSA.py "$ARCH" "$WSA_ZIP_PATH" "$WORK_DIR" "$WSA_WORK_ENV"; then
-        CLEAN_DOWNLOAD_WSA=1
         abort "Unzip WSA failed, is the download incomplete?"
     fi
     echo -e "Extract done\n"
@@ -603,13 +602,22 @@ if [ "$ROOT_SOL" = "kernelsu" ]; then
     # shellcheck disable=SC1090
     source "${KERNELSU_INFO:?}" || abort
     if ! unzip "$KERNELSU_PATH" -d "$WORK_DIR/kernelsu"; then
-        CLEAN_DOWNLOAD_KERNELSU=1
         abort "Unzip KernelSU failed, package is corrupted?"
     fi
     if [ "$ARCH" = "x64" ]; then
         mv "$WORK_DIR/kernelsu/bzImage" "$WORK_DIR/kernelsu/kernel"
     elif [ "$ARCH" = "arm64" ]; then
         mv "$WORK_DIR/kernelsu/Image" "$WORK_DIR/kernelsu/kernel"
+    fi
+    KSU_APP_DIR="../common/system/priv-app/KernelSU"
+    mkdir "$KSU_APP_DIR"
+    cp -f "$KERNELSU_APK_PATH" "$KSU_APP_DIR/"
+    unzip "$KERNELSU_APK_PATH" "lib/*/lib*.so" -d "$KSU_APP_DIR/"
+    mv -v "$KSU_APP_DIR/lib/arm64-v8a/" "$KSU_APP_DIR/lib/arm64/"
+    if [[ "$ARCH" == "arm64" ]]; then
+        rm -rf "$KSU_APP_DIR/lib/x86_64/"
+    else
+        rm -rf "$KSU_APP_DIR/lib/arm64/"
     fi
     echo -e "done\n"
 fi
@@ -732,15 +740,14 @@ if [[ "$WSA_MAJOR_VER" -lt 2304 ]]; then
 fi
 if [ "$REMOVE_AMAZON" ]; then
     echo "Remove Amazon Appstore"
-    find "${PRODUCT_MNT:?}"/{etc/permissions,etc/sysconfig,framework,priv-app} 2>/dev/null | grep -e amazon -e venezia | sudo xargs rm -rf
-    find "${SYSTEM_EXT_MNT:?}"/{etc/*permissions,framework,priv-app} 2>/dev/null | grep -e amazon -e venezia | sudo xargs rm -rf
     rm -f "$WORK_DIR/wsa/$ARCH/apex/mado_release.apex"
+    # Stub
     find "${PRODUCT_MNT:?}"/{apex,etc/*permissions} 2>/dev/null | grep -e mado | sudo xargs rm -rf
     echo -e "done\n"
 fi
 
 echo "Add device administration features"
-sudo sed -i -e '/cts/a \ \ \ \ <feature name="android.software.device_admin" />' -e '/print/i \ \ \ \ <feature name="android.software.managed_users" />' "$VENDOR_MNT/etc/permissions/windows.permissions.xml"
+sudo sed -i -e '/cts/a \ \ \ \ <feature name="android.software.device_admin" />' "$VENDOR_MNT/etc/permissions/windows.permissions.xml"
 sudo setfattr -n security.selinux -v "u:object_r:vendor_configs_file:s0" "$VENDOR_MNT/etc/permissions/windows.permissions.xml" || abort
 echo -e "done\n"
 
@@ -826,10 +833,40 @@ done
 
     echo -e "Integrate Magisk done\n"
 elif [ "$ROOT_SOL" = "kernelsu" ]; then
-    echo "Integrate KernelSU"
-    mv "$WORK_DIR/wsa/$ARCH/Tools/kernel" "$WORK_DIR/wsa/$ARCH/Tools/kernel_origin"
+    echo "Copy KernelSU kernel"
     cp "$WORK_DIR/kernelsu/kernel" "$WORK_DIR/wsa/$ARCH/Tools/kernel"
-    echo -e "Integrate KernelSU done\n"
+    echo -e "Copy KernelSU kernel done\n"
+    echo "Add auto-install script for KernelSU Manager"
+    # Copy APK
+    DAT_APP="$SYSTEM_MNT/data-app"
+    sudo mkdir "$DAT_APP"
+    sudo cp -f "$KERNELSU_APK_PATH" "$DAT_APP/"
+    sudo chmod 0755 "$DAT_APP/"
+    sudo chmod 0644 "$DAT_APP/KernelSU.apk"
+    sudo find "$DAT_APP/" -exec chown root:root {} \;
+    sudo find "$DAT_APP/" -exec setfattr -n security.selinux -v "u:object_r:system_file:s0" {} \; || abort
+    # Setup script
+    KSU_PRE="$SYSTEM_MNT/bin/ksuinstall"
+    sudo tee -a "$KSU_PRE" <<EOF >/dev/null || abort
+#!/system/bin/sh
+umask 0777
+echo "\nKernelSU Install Manager"
+if [ ! -e "/storage/emulated/0/.ksu_completed_\$(getprop ro.build.date.utc)" ]; then
+    echo "\nInstalling KernelSU APK"
+    pm install -i android -r /system/data-app/KernelSU.apk
+    echo "\nLaunching KernelSU App"
+    am start -n me.weishu.kernelsu/.ui.MainActivity
+    touch "/storage/emulated/0/.ksu_completed_\$(getprop ro.build.date.utc)"
+    echo "\nDone!\n"
+else
+    echo "\nKernelSU is installed.\n"
+fi
+EOF
+    # Grant access
+    sudo chmod 0755 "$KSU_PRE"
+    sudo chown root:root "$KSU_PRE"
+    sudo setfattr -n security.selinux -v "u:object_r:system_file:s0" "$KSU_PRE" || abort
+    echo -e "Add KernelSU Manager done\n"
 fi
 
 echo "Add extra packages"
@@ -874,7 +911,6 @@ if [ "$GAPPS_BRAND" != 'none' ]; then
         find "$WORK_DIR/gapps/etc/" -maxdepth 1 -mindepth 1 -printf '%P\n' | xargs -I placeholder sudo find "$SYSTEM_MNT/etc/placeholder" -type d -exec setfattr -n security.selinux -v "u:object_r:system_file:s0" {} \; || abort
         find "$WORK_DIR/gapps/etc/" -maxdepth 1 -mindepth 1 -printf '%P\n' | xargs -I placeholder sudo find "$SYSTEM_MNT/etc/placeholder" -type f -exec setfattr -n security.selinux -v "u:object_r:system_file:s0" {} \; || abort
     else
-        sudo setfattr -n security.selinux -v "u:object_r:system_file:s0" "$PRODUCT_MNT/framework" || abort
         find "$WORK_DIR/gapps/product/app/" -maxdepth 1 -mindepth 1 -printf '%P\n' | xargs -I placeholder sudo find "$PRODUCT_MNT/app/placeholder" -type d -exec setfattr -n security.selinux -v "u:object_r:system_file:s0" {} \; || abort
         find "$WORK_DIR/gapps/product/priv-app/" -maxdepth 1 -mindepth 1 -printf '%P\n' | xargs -I placeholder sudo find "$PRODUCT_MNT/priv-app/placeholder" -type d -exec setfattr -n security.selinux -v "u:object_r:system_file:s0" {} \; || abort
         find "$WORK_DIR/gapps/product/framework/" -maxdepth 1 -mindepth 1 -printf '%P\n' | xargs -I placeholder sudo find "$PRODUCT_MNT/framework/placeholder" -type d -exec setfattr -n security.selinux -v "u:object_r:system_file:s0" {} \; || abort
@@ -947,18 +983,39 @@ fi
 
 echo "Remove signature and add scripts"
 sudo rm -rf "${WORK_DIR:?}"/wsa/"$ARCH"/\[Content_Types\].xml "$WORK_DIR/wsa/$ARCH/AppxBlockMap.xml" "$WORK_DIR/wsa/$ARCH/AppxSignature.p7x" "$WORK_DIR/wsa/$ARCH/AppxMetadata" || abort
-cp "$vclibs_PATH" "$xaml_PATH" "$WORK_DIR/wsa/$ARCH" || abort
+cp "$VCLibs_PATH" "$xaml_PATH" "$WORK_DIR/wsa/$ARCH" || abort
 cp "$UWPVCLibs_PATH" "$xaml_PATH" "$WORK_DIR/wsa/$ARCH" || abort
-cp "../bin/$ARCH/makepri.exe" "$WORK_DIR/wsa/$ARCH" || abort
 cp "../xml/priconfig.xml" "$WORK_DIR/wsa/$ARCH/xml/" || abort
-cp ../installer/MakePri.ps1 "$WORK_DIR/wsa/$ARCH" || abort
+if [[ "$ROOT_SOL" = "none" ]] && [[ "$GAPPS_BRAND" = "none" ]] && [[ "$REMOVE_AMAZON" == "yes" ]]; then
+    sed -i -e 's/Start-Process\ "wsa:\/\/com.topjohnwu.magisk"//g' ../installer/Install.ps1
+    sed -i -e 's/Start-Process\ "wsa:\/\/com.android.vending"//g' ../installer/Install.ps1
+else
+    if [[ "$ROOT_SOL" == "none" ]]; then
+        sed -i -e 's/Start-Process\ "wsa:\/\/com.topjohnwu.magisk"//g' ../installer/Install.ps1
+    elif [[ "$ROOT_SOL" = "kernelsu" ]]; then
+        sed -i -e 's/wsa:\/\/com.topjohnwu.magisk/https:\/\/github.com\/YT-Advanced\/WSA-Script\/blob\/main\/Guides\/KernelSU.md/g' ../installer/Install.ps1
+    elif [[ "$MAGISK_VER" = "delta" ]]; then
+        sed -i -e 's/com.topjohnwu.magisk/io.github.huskydg.magisk/g' ../installer/Install.ps1
+    elif [[ "$MAGISK_VER" = "alpha" ]]; then
+        sed -i -e 's/com.topjohnwu.magisk/io.github.vvb2060.magisk/g' ../installer/Install.ps1
+    fi
+    if [[ "$GAPPS_BRAND" = "none" ]] && [[ "$REMOVE_AMAZON" != "yes" ]]; then
+        sed -i -e 's/com.android.vending/com.amazon.venezia/g' ../installer/Install.ps1
+    elif [[ "$GAPPS_BRAND" = "none" ]]; then
+        sed -i -e 's/Start-Process\ "wsa:\/\/com.android.vending"//g' ../installer/Install.ps1
+    fi
+fi
 cp ../installer/Install.ps1 "$WORK_DIR/wsa/$ARCH" || abort
+find "$WORK_DIR/wsa/$ARCH" -not -path "*/pri*" -not -path "*/xml*" -printf "%P\n" | sed -e 's/\//\\/g' -e '/^$/d' > "$WORK_DIR/wsa/$ARCH/filelist.txt" || abort
+find "$WORK_DIR/wsa/$ARCH/pri" -printf "%P\n" | sed -e 's/^/pri\\/' -e '/^$/d' > "$WORK_DIR/wsa/$ARCH/filelist-pri.txt" || abort
+find "$WORK_DIR/wsa/$ARCH/xml" -printf "%P\n" | sed -e 's/^/xml\\/' -e '/^$/d' >> "$WORK_DIR/wsa/$ARCH/filelist-pri.txt" || abort
+cp "../bin/$ARCH/makepri.exe" "$WORK_DIR/wsa/$ARCH" || abort
+echo "makepri.exe" >> "$WORK_DIR/wsa/$ARCH/filelist-pri.txt" || abort
+cp ../installer/MakePri.ps1 "$WORK_DIR/wsa/$ARCH" || abort
 cp ../installer/Run.bat "$WORK_DIR/wsa/$ARCH" || abort
-find "$WORK_DIR/wsa/$ARCH" -maxdepth 1 -mindepth 1 -printf "%P\n" >"$WORK_DIR/wsa/$ARCH/filelist.txt" || abort
 echo -e "Remove signature and add scripts done\n"
 
 echo "Generate info"
-
 if [[ "$ROOT_SOL" = "none" ]]; then
     name1=""
 elif [ "$ROOT_SOL" = "magisk" ]; then
@@ -980,7 +1037,6 @@ else
         \033[0m"
     fi
 fi
-# artifact_name=WSA-${RELEASE_NAME}${name1}${name2}_${WSA_VER}_${ARCH}_${WSA_REL}
 artifact_name=WSA_${WSA_VER}_${ARCH}_${WSA_REL}${name1}${name2}
 if [ "$NOFIX_PROPS" = "yes" ]; then
     artifact_name+="-NoFixProps"
@@ -998,26 +1054,17 @@ if [ ! -d "$OUTPUT_DIR" ]; then
     mkdir -p "$OUTPUT_DIR"
 fi
 OUTPUT_PATH="${OUTPUT_DIR:?}/$artifact_name"
-if [ "$COMPRESS_OUTPUT" ] || [ -n "$COMPRESS_FORMAT" ]; then
-    mv "$WORK_DIR/wsa/$ARCH" "$WORK_DIR/wsa/$artifact_name"
-    if [ -z "$COMPRESS_FORMAT" ]; then
-        COMPRESS_FORMAT="7z"
-    fi
-    if [ -n "$COMPRESS_FORMAT" ]; then
-        FILE_EXT=".$COMPRESS_FORMAT"
-        OUTPUT_PATH="$OUTPUT_PATH$FILE_EXT"
-    fi
-    rm -f "${OUTPUT_PATH:?}" || abort
-    if [ "$COMPRESS_FORMAT" = "7z" ]; then
-        echo "Compressing with 7z"
-        7z a "${OUTPUT_PATH:?}" "$WORK_DIR/wsa/$artifact_name" || abort
-    elif [ "$COMPRESS_FORMAT" = "zip" ]; then
-        echo "Compressing with zip"
-        7z -tzip a "$OUTPUT_PATH" "$WORK_DIR/wsa/$artifact_name" || abort
-    fi
-else
-    rm -rf "${OUTPUT_PATH:?}" || abort
-    cp -r "$WORK_DIR/wsa/$ARCH" "$OUTPUT_PATH" || abort
+mv "$WORK_DIR/wsa/$ARCH" "$WORK_DIR/wsa/$artifact_name"
+if [ "$COMPRESS_FORMAT" = "7z" ]; then
+    OUTPUT_PATH="$OUTPUT_PATH.7z"
+    echo "Compressing with 7z"
+    echo "file_ext=.7z" >> "$GITHUB_OUTPUT"
+    7z a "${OUTPUT_PATH:?}" "$WORK_DIR/wsa/$artifact_name" || abort
+elif [ "$COMPRESS_FORMAT" = "zip" ]; then
+    echo "Compressing with zip later..."
+    echo "file_ext=.zip" >> "$GITHUB_OUTPUT"
+    cp -r "$WORK_DIR/wsa/$artifact_name" "$OUTPUT_PATH" || abort
+    touch "$OUTPUT_PATH/apex/.gitkeep" || abort
 fi
 echo -e "done\n"
 
