@@ -23,7 +23,7 @@ jobs:
         gapps: [MindTheGapps]
         root: [magisk]
         compress-format: [zip]
-        preview-program-builds: [no]
+        preview-program-builds: [yes]
 
     steps:
       - name: Checkout
