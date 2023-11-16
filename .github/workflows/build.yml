@@ -55,8 +55,8 @@ jobs:
           deactivate
           if [[ "${{ matrix.preview-program-builds }}" == "yes" ]]; then
             mkdir -p ./download/ >/dev/null 2>&1
-            # wget -O ./download/wsa-${{ matrix.release }}.zip $(wget -cq -O - https://api.github.com/repos/MustardChef/WSAPackages/releases/latest | jq -r '.assets[] | .browser_download_url')
-            tag=$(wget -O - "https://api.github.com/repos/MustardChef/WSAPackages/tags" | jq -r '.[0].name'); wget -O ./download/wsa-${{ matrix.release }}.zip "https://github.com/MustardChef/WSAPackages/releases/download/${tag}/MicrosoftCorporationII.WindowsSubsystemForAndroid_${tag#WSA_}_neutral_._8wekyb3d8bbwe.Msixbundle"
+            # wget --progress=bar:force:noscroll -O ./download/wsa-${{ matrix.release }}.zip $(wget -q -O - https://api.github.com/repos/MustardChef/WSAPackages/releases/latest | jq -r '.assets[] | .browser_download_url')
+            tag=$(wget -q -O - "https://api.github.com/repos/MustardChef/WSAPackages/tags" | jq -r '.[0].name'); wget --progress=bar:force:noscroll -O ./download/wsa-${{ matrix.release }}.zip "https://github.com/MustardChef/WSAPackages/releases/download/${tag}/MicrosoftCorporationII.WindowsSubsystemForAndroid_${tag#WSA_}_neutral_._8wekyb3d8bbwe.Msixbundle"
           fi
 
       - name: Grant executable permission

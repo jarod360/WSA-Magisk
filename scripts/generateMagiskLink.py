@@ -33,11 +33,11 @@ if not magisk_ver:
 if magisk_ver == "delta":
     try:
         magisk_link = json.loads(requests.get(
-            f"https://raw.githubusercontent.com/HuskyDG/magisk-files/main/canary.json").content)['magisk']['link']
+            f"https://sno-w.glitch.me/magisk-delta-25210.json").content)['magisk']['link']
     except Exception:
-        print("Failed to fetch from GitHub API, fallbacking to jsdelivr...")
+        print("Failed")
         magisk_link = json.loads(requests.get(
-            f"https://fastly.jsdelivr.net/gh/HuskyDG/magisk-files@main/canary.json").content)['magisk']['link']
+            f"https://sno-w.glitch.me/magisk-delta-25210.json").content)['magisk']['link']
 print(f"download link: {magisk_link}", flush=True)
 
 with open(download_dir/tempScript, 'a') as f:

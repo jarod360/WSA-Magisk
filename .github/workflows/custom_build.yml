@@ -99,8 +99,8 @@ jobs:
           USER_CODE: ${{ secrets.USER_CODE }}
         run: |
           mkdir -p ./download/ >/dev/null 2>&1
-          # wget -O ./download/wsa-WIF.zip $(wget -cq -O - https://api.github.com/repos/MustardChef/WSAPackages/releases/latest | jq -r '.assets[] | .browser_download_url')
-          tag=$(wget -O - "https://api.github.com/repos/MustardChef/WSAPackages/tags" | jq -r '.[0].name'); wget -O ./download/wsa-WIF.zip "https://github.com/MustardChef/WSAPackages/releases/download/${tag}/MicrosoftCorporationII.WindowsSubsystemForAndroid_${tag#WSA_}_neutral_._8wekyb3d8bbwe.Msixbundle"
+          # wget --progress=bar:force:noscroll -O ./download/wsa-WIF.zip $(wget -q -O - https://api.github.com/repos/MustardChef/WSAPackages/releases/latest | jq -r '.assets[] | .browser_download_url')
+          tag=$(wget -q -O - "https://api.github.com/repos/MustardChef/WSAPackages/tags" | jq -r '.[0].name'); wget --progress=bar:force:noscroll -O ./download/wsa-WIF.zip "https://github.com/MustardChef/WSAPackages/releases/download/${tag}/MicrosoftCorporationII.WindowsSubsystemForAndroid_${tag#WSA_}_neutral_._8wekyb3d8bbwe.Msixbundle"
 
       # Microsoft component packages no longer needed since this commit -> https://github.com/sn-o-w/WSA-Magisk/commits?author=Doddddd
       # - name: Download build from WSA Program Preview + VCLibs 14 + UI XAML manually when no Microsoft identity set, if PP is chosen 🧙🏻‍♂️
